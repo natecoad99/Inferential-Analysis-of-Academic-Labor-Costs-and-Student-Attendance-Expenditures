@@ -1,0 +1,220 @@
+---
+title: "Inferentiala Analysis of Academic Labor Costs and Student Attendance Expenditures"
+author: "Nathaniel Coad"
+date: "`r Sys.Date()`"
+documentclass: article
+geometry: margin=1in
+fontsize: 11pt
+output:
+  pdf_document:
+    toc: false
+    df_print: kable
+    fig_caption: false
+    number_sections: false
+    dev: pdf
+    highlight: tango
+  html_document:
+    theme: default
+    self_contained: true
+    toc: false
+    df_print: kable
+    fig_caption: false
+    number_sections: false
+    smart: true
+    dev: svg
+---
+
+```{r setup, include = FALSE}
+# DO NOT ALTER THIS CHUNK
+# Set knitr options
+knitr::opts_chunk$set(
+  echo = TRUE,
+  eval = TRUE,
+  fig.width = 5,
+  fig.asp = 0.618,
+  out.width = "70%",
+  dpi = 120,
+  fig.align = "center",
+  cache = FALSE
+)
+# Load required packages
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(infer))
+suppressPackageStartupMessages(library(modelr))
+suppressPackageStartupMessages(library(broom))
+# Load dataset
+college <- read_rds("college.rds") %>%
+  type_convert(
+    na=combine("", "NA", "PrivacySuppressed")
+  )
+# Set seed
+set.seed(98261936)
+```
+
+## Introduction
+
+In this project I will be answering the question, "Is there a relationship between average faculty salary and the average cost of attendance for academic year institutions?". The response variable I will use is AVGFACSAL or average faculty salary which is a continuous variable. The explanatory variable I will use is COSTT4_A or the average cost of attendance which is a continuous variable. In order to answer this question I will utilize linear models. I believe this question is relevant and important to answer because Professors are normally underpaid, and Universities normally do not allocate enough funds to staff. I am curious as to how large the discrepancy is between the cost of attendance and the salary of staff members.
+
+## Preprocessing
+
+```{r}
+college_reduced <- select(college, AVGFACSAL, COSTT4_A, CONTROL)
+```
+
+Select relevant columns from dataset and store in new dataframe.
+```{r}
+college_reduced <- college_reduced %>%
+  rename(
+    average_faculty_salary = AVGFACSAL,
+    cost_of_attendance = COSTT4_A,
+    control_of_institution = CONTROL
+    
+  )
+```
+
+Rename relevant columns so they are more human readable.
+
+## Visualization
+
+The following histogram was created to examine the distribution of the continuous variable average_faculty_salary.
+```{r}
+ggplot(data = college_reduced) +
+  geom_histogram(mapping = aes(x = average_faculty_salary)) +
+labs(
+  title = "Distribution of Average Faculty Salary"
+)
+```
+As we can see from the histogram the distribution is approximately bell shaped and therefore normal despite being slightly right skewed and the presence of a single outlier. 
+
+The following histogram was created to examine the distribution of the continuous variable cost_of_attendance.
+```{r}
+ggplot(data = college_reduced) +
+  geom_histogram(mapping = aes(x = cost_of_attendance)) +
+labs(
+  title = "Distribution of Cost of Attendance"
+)
+```
+As we can see from the histogram, the distribution is not normal or symmetric. The plot is right skewed and has clear outliers.
+
+The following histogram was created to examine the distribution of average faculty salary across each control_of_institution. 1 being public, 2 being private nonprofit, and 3 being private for-profit.
+```{r}
+college_reduced %>%
+ggplot() +
+geom_histogram(aes(x = average_faculty_salary), alpha = .5) +
+facet_wrap(~ control_of_institution, scales = "free") +
+labs(
+title = "Distribution of average_faculty_salary across \n control_of_institution"
+)
+```
+Each distribution is approximately symmetric and normal and has similar placement of the median. This indicates no significant differences across the categorical variable.
+
+The following scatterplot was created to examine the covariation between the continuous variables average_faculty_salary and cost_of_attendance.
+```{r}
+college_reduced %>%
+ggplot() +
+geom_point(mapping = aes(x = average_faculty_salary, y = cost_of_attendance), alpha = .5) +
+labs(
+  title = "Cost of Attendance vs. \n Average Faculty Salary"
+)
+```
+There is no clear trend in the scatter plot. However, there may be a very weak positive correlation between average faculty salary and cost of attendance.  
+
+## Summary Statistics
+
+Calculate and Display summary statistics for average faculty salary using built in functions and removing all instances of NA.
+```{r}
+college_reduced %>%
+  summarize(
+    count = n(),
+    mean = mean(average_faculty_salary, na.rm = TRUE),
+    median = median(average_faculty_salary, na.rm = TRUE),
+    range = max(average_faculty_salary, na.rm = TRUE) - min(average_faculty_salary, na.rm = TRUE),
+    std = sd(average_faculty_salary, na.rm = TRUE),
+    iqr = IQR(average_faculty_salary, na.rm = TRUE),
+  )
+```
+
+Calculate and Display summary statistics for cost of attendance using built in functions and removing all instances of NA.
+```{r}
+college_reduced %>%
+  summarize(
+    count = n(),
+    mean = mean(cost_of_attendance, na.rm = TRUE),
+    median = median(cost_of_attendance, na.rm = TRUE),
+    range = max(cost_of_attendance, na.rm = TRUE) - min(average_faculty_salary, na.rm = TRUE),
+    std = sd(cost_of_attendance, na.rm = TRUE),
+    iqr = IQR(cost_of_attendance, na.rm = TRUE),
+  )
+```
+
+
+## Data Analysis
+
+Create linear model using average faculty salary and cost of attendance from the dataframe we created as the explanatory and response variables respectively.
+```{r}
+college_lm <- lm(average_faculty_salary~cost_of_attendance, data=college_reduced)
+```
+
+Report model coefficients using the tidy function.
+```{r}
+tidy(college_lm)
+```
+
+Report model performance using the glance function.
+```{r}
+glance(college_lm)
+```
+The intercept reported by the tidy function indicates the estimated value of average faculty salary when the value of cost of attendance is 0. The r-squared value tells us that approximately 13.8 percent of the variance in average faculty salary can be explained by the cost of attendance. Since we only have one explanatory variable, the adjusted r squared value is not relevant. The sigma value reported by the glance function indicates the standard error of the residuals.
+
+Add predictions and residuals to the dataframe we created.
+```{r}
+college_df <- college_reduced %>%
+  add_predictions(college_lm) %>%
+  add_residuals(college_lm)
+```
+
+Plot Observed vs. Predicted values for average faculty salary.
+```{r}
+college_df %>%
+ggplot() +
+geom_point(mapping = aes(x = pred, y = average_faculty_salary)) +
+geom_abline(slope = 1, intercept = 0) +
+labs(
+title = "Observed vs. Predicted AVG \n Faculty Salary",
+y = "Observed",
+x = "Predicted"
+)
+
+
+```
+The Observed vs. Predicted plot tells me that the model meets the linear assumption because the residuals are approximately normally distributed and have constant variability.
+
+Plot the residuals vs predicted residuals.
+```{r}
+college_df %>%
+ggplot() +
+geom_point(
+mapping = aes(x = pred, y = resid)
+) +
+geom_hline(aes(yintercept = 0)) +
+labs(
+title = "Residuals vs. Predicted Residuals",
+x = "Predicted",
+y = "Residuals"
+)
+
+```
+This graph confirms the approximately constant variablity of the residuals.
+
+Plot Q-Q.
+```{r}
+college_df %>%
+ggplot() +
+geom_qq(aes(sample = resid)) +
+geom_qq_line(aes(sample = resid)) + labs(title = "Q-Q Plot")
+```
+This plot solidifies that the residuals are approximately normally distributed.
+
+## Conclusion
+
+The Histogram plots of each respective variable tell us that the explanatory variable is not normally distributed or symmetric. Conversely, the response variable is both approximately symmetric and normally distributed. According to the results of the observed vs predicted, predicted vs residuals, and Q-Q plots, we can say that the linear model meets the 3 assumptions and is therefore a valid model. The R-squared value of 0.1384657 tells us that approximately 13.8 percent of the variance in average faculty salary can be explained by the cost of attendance. This indicates to us that cost of attendance is not a good predictor of average faculty salary. To answer my original question of interest, there is a very weak correlation between average faculty salary and cost of attendance, the analyses from each section also support this conclusion. In summary, even if the cost of attendance rises significantly, there is unfortunately little correlation with any increase in pay for professors.
